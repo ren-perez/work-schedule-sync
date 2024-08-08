@@ -8,6 +8,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -32,8 +33,12 @@ def get_current_week_monday():
 
 
 def krowd_login(username, password):
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
     """Performs login to Krowd website and extracts cookies."""
-    driver = webdriver.Chrome()
+    driver = webdriver.Chrome(options=chrome_options)
     driver.get(KROWD_LOGIN_URL)
     wait = WebDriverWait(driver, 10)
     wait.until(EC.presence_of_element_located((By.ID, "user")))
