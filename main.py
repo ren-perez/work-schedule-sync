@@ -176,10 +176,7 @@ def parse_arguments():
 def main():
     """Main function.
     """
-    username = "CXT08139068"
-    password = "Supersalad2024"
-    # username = "KRC04070166"
-    # password = "G00d!luck"
+
     try:
         # args = parse_arguments()
         # username = args.username
