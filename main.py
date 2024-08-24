@@ -1,18 +1,20 @@
+import argparse
+import os
 import os.path
 import requests
-import os
-import argparse
+import traceback
 from datetime import datetime, timedelta
 
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 
 from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow, Flow
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -23,6 +25,11 @@ EVENT_SUMMARY = "OG"
 EVENT_LOCATION = '24688 Hesperian Blvd, Hayward, CA 94545'
 EVENT_DESCRIPTION = "Don't be late lazy fuck"
 TIME_ZONE = 'America/Los_Angeles'
+TOKEN_PATH = "/app/token/token.json"
+
+# Get Krowd credentials from environment variables
+KROWD_USERNAME = os.environ.get('KROWD_USERNAME')
+KROWD_PASSWORD = os.environ.get('KROWD_PASSWORD')
 
 
 def get_current_week_monday():
@@ -37,31 +44,64 @@ def krowd_login(username, password):
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    """Performs login to Krowd website and extracts cookies."""
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.get(KROWD_LOGIN_URL)
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.ID, "user")))
-    driver.find_element(by=By.ID, value="user").send_keys(username)
-    driver.find_element(by=By.ID, value="password").send_keys(password)
-    # driver.implicitly_wait(2)
-    driver.find_element(by=By.ID, value="btnLogin").click()
     
-    wait.until(EC.presence_of_element_located((By.ID, "user")))
-    driver.find_element(by=By.ID, value="user").send_keys(username)
-    driver.find_element(by=By.ID, value="password").send_keys(password)
-    driver.find_element(by=By.ID, value="btnLogin").click()
+    try:
+        print("Initializing Chrome driver...")
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get(KROWD_LOGIN_URL)
+        
+        wait = WebDriverWait(driver, 20)
+        
+        print("Waiting for username field...")
+        username_field = wait.until(EC.presence_of_element_located((By.ID, "user")))
+        print("Entering username...")
+        username_field.send_keys(username)        
+        print("Entering password...")
+        driver.find_element(by=By.ID, value="password").send_keys(password)        
+        print("Clicking login button...")
+        driver.find_element(by=By.ID, value="btnLogin").click()
+        
+        print("Waiting for second login page...")
+        wait.until(EC.presence_of_element_located((By.ID, "user")))        
+        print("Entering username again...")
+        driver.find_element(by=By.ID, value="user").send_keys(username)        
+        print("Entering password again...")
+        driver.find_element(by=By.ID, value="password").send_keys(password)        
+        print("Clicking login button again...")
+        driver.find_element(by=By.ID, value="btnLogin").click()
+        
+        print("Waiting for 'Schedules' link...")
+        schedules_link = wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Schedules")))
+        print("Clicking 'Schedules' link...")
+        schedules_link.click()
+        
+        print("Getting cookies...")
+        cookies = driver.get_cookies()
+        
+        print("Closing driver...")
+        driver.quit()
+        
+        return {cookie["name"]: cookie["value"] for cookie in cookies}
     
-    wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Schedules")))
-    driver.find_element(by=By.LINK_TEXT, value="Schedules").click()
-    cookies = driver.get_cookies()
-    driver.quit()
-    return {cookie["name"]: cookie["value"] for cookie in cookies}
-
+    except TimeoutException as e:
+        print(f"Timeout error: {str(e)}")
+        print(f"Current URL: {driver.current_url}")
+        print(f"Page source: {driver.page_source}")
+    except NoSuchElementException as e:
+        print(f"Element not found: {str(e)}")
+        print(f"Current URL: {driver.current_url}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {str(e)}")
+        print(traceback.format_exc())
+    finally:
+        if 'driver' in locals():
+            driver.quit()
+    
+    return None
 
 def get_schedule(cookies, shift_start_date):
     """Fetches schedule data using provided cookies and start date."""
-    # url = "https://myshift.darden.com/api/v1/corporations/TOG/restaurants/1382/team-members/102859068/shifts"
+    # url = "https://myshift.darden.com/api/v1/corporations/TOG/restaurants/1382/team-members/999999999/shifts"
     url = f"""https://myshift.darden.com/api/v1/corporations/TOG/restaurants/{cookies["Rest"]}/team-members/{cookies["EmpID"]}/shifts"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
@@ -134,25 +174,28 @@ def create_events(service, events):
 
 
 def set_google_token():
-    """ Sets Google API token.
-    The file token.json stores the user's access and refresh tokens, and is
-    created automatically when the authorization flow completes for the first
-    time.
-    """
     creds = None
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
+    if os.path.exists(TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json", SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open("token.json", "w") as token:
+            flow = Flow.from_client_secrets_file(
+                'credentials.json',
+                scopes=SCOPES,
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+            
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            
+            print(f"Please visit this URL to authorize the application: {auth_url}")
+            code = input("Enter the authorization code: ")
+            
+            flow.fetch_token(code=code)
+            creds = flow.credentials
+
+        with open(TOKEN_PATH, 'w') as token:
             token.write(creds.to_json())
 
     return creds
@@ -174,21 +217,22 @@ def parse_arguments():
 
 
 def main():
-    """Main function.
-    """
-
     try:
-        # args = parse_arguments()
-        # username = args.username
-        # password = args.password
-        service = get_service()
-        cookies = krowd_login(username, password)
+        if not KROWD_USERNAME or not KROWD_PASSWORD:
+            raise ValueError("Krowd username or password not set in environment variables.")
+        cookies = krowd_login(KROWD_USERNAME, KROWD_PASSWORD)
         current_week_monday = get_current_week_monday()
         schedule = get_schedule(cookies, current_week_monday)
+        service = get_service()
         del_current_week_google(service, current_week_monday)
         create_events(service, schedule)
     except HttpError as error:
         print(f"An error occurred: {error}")
+    except ValueError as error:
+        print(f"Configuration error: {error}")
+    except Exception as error:
+        print(f"An unexpected error occurred: {error}")
+        print("If this is an authentication error, please ensure you can access the OAuth URL provided.")
 
 
 if __name__ == "__main__":
