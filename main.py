@@ -4,6 +4,7 @@ import os.path
 import requests
 import traceback
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
@@ -17,19 +18,30 @@ from google_auth_oauthlib.flow import InstalledAppFlow, Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import os
+from supabase import create_client, Client
+
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+
+load_dotenv()
+
+KROWD_USERNAME: str = os.environ.get('KROWD_USERNAME')
+KROWD_PASSWORD: str = os.environ.get('KROWD_PASSWORD')
+
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 KROWD_LOGIN_URL = "https://krowdweb.darden.com/krowd/prd/siteminder/login_aa.asp?TYPE=33554433&REALMOID=06-918f5c77-d475-4ec7-9360-482fef7e698b&GUID=&SMAUTHREASON=0&METHOD=GET&SMAGENTNAME=-SM-LOG13DUEImGuYrdflrOtZQg%2fn6D1bmWqj8asUhwZ%2fq0IFEFIKmOZdUnhd5D8fCuC&TARGET=-SM-https%3a%2f%2fkrowdweb%2edarden%2ecom%2faffiliates%2fkrowdext%2fkrowdextaccess%2easp"
 EVENT_SUMMARY = "OG"
 EVENT_LOCATION = '24688 Hesperian Blvd, Hayward, CA 94545'
-EVENT_DESCRIPTION = "Don't be late lazy fuck"
+EVENT_DESCRIPTION = "Don't be late"
 TIME_ZONE = 'America/Los_Angeles'
-TOKEN_PATH = "/app/token/token.json"
-
-# Get Krowd credentials from environment variables
-KROWD_USERNAME = os.environ.get('KROWD_USERNAME')
-KROWD_PASSWORD = os.environ.get('KROWD_PASSWORD')
+# TOKEN_PATH = "/app/token/token.json"
+TOKEN_PATH = "./token/token.json"
 
 
 def get_current_week_monday():
@@ -41,7 +53,7 @@ def get_current_week_monday():
 
 def krowd_login(username, password):
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    # chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     
@@ -61,14 +73,14 @@ def krowd_login(username, password):
         print("Clicking login button...")
         driver.find_element(by=By.ID, value="btnLogin").click()
         
-        print("Waiting for second login page...")
-        wait.until(EC.presence_of_element_located((By.ID, "user")))        
-        print("Entering username again...")
-        driver.find_element(by=By.ID, value="user").send_keys(username)        
-        print("Entering password again...")
-        driver.find_element(by=By.ID, value="password").send_keys(password)        
-        print("Clicking login button again...")
-        driver.find_element(by=By.ID, value="btnLogin").click()
+        # print("Waiting for second login page...")
+        # wait.until(EC.presence_of_element_located((By.ID, "user")))        
+        # print("Entering username again...")
+        # driver.find_element(by=By.ID, value="user").send_keys(username)        
+        # print("Entering password again...")
+        # driver.find_element(by=By.ID, value="password").send_keys(password)        
+        # print("Clicking login button again...")
+        # driver.find_element(by=By.ID, value="btnLogin").click()
         
         print("Waiting for 'Schedules' link...")
         schedules_link = wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Schedules")))
@@ -216,6 +228,31 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def parse_schedule(schedule_response):
+    parsed_shifts = []
+    
+    for shift in schedule_response:
+        # start_time = datetime.strptime(shift['startDateTime'], '%Y-%m-%dT%H:%M:%S')
+        # end_time = datetime.strptime(shift['endDateTime'], '%Y-%m-%dT%H:%M:%S')
+        
+        # Shift details, linked to the run_id
+        shift_details = {
+            'shift_id': shift['restRequiredLaborId'],
+            # 'run_id': run_id,  # Link shift to this run
+            'employee_id': shift['employeeId'],
+            'job_class': shift['jobClass'],
+            'shift_description': shift['shiftTimeDescription'],
+            'start_time': shift['startDateTime'],
+            'end_time': shift['endDateTime'],
+            'day_of_week': shift['dayOfWeek'],
+            'state': shift['stateId'],
+            'comment': shift['comment']
+        }
+        parsed_shifts.append(shift_details)
+    
+    return parsed_shifts
+
+
 def main():
     try:
         if not KROWD_USERNAME or not KROWD_PASSWORD:
@@ -223,9 +260,16 @@ def main():
         cookies = krowd_login(KROWD_USERNAME, KROWD_PASSWORD)
         current_week_monday = get_current_week_monday()
         schedule = get_schedule(cookies, current_week_monday)
-        service = get_service()
-        del_current_week_google(service, current_week_monday)
-        create_events(service, schedule)
+
+        
+        parsed_schedule = parse_schedule(schedule)
+        supabase.table('shifts').insert(parsed_schedule).execute()
+
+        print(schedule)
+
+        # service = get_service()
+        # del_current_week_google(service, current_week_monday)
+        # create_events(service, schedule)
     except HttpError as error:
         print(f"An error occurred: {error}")
     except ValueError as error:
