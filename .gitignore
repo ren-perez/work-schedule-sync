@@ -1,4 +1,10 @@
-token.json
-credentials.json
-.venv
+# Ignore virtual environments
+venv/
+.env/
+.venv/
+Lib
 .env
+.venv
+data
+credentials.json
+token.json

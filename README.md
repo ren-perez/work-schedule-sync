@@ -1,80 +1,229 @@
-# Work Schedule Sync
+# 🗓️ Krowd to Google Calendar Sync
 
-## Overview
+This Python application logs into **Darden's Krowd portal**, retrieves your weekly shift schedule, and syncs it to a specified **Google Calendar**. It automates shift tracking and calendar management using Selenium and Google APIs.
 
-Work Schedule Sync is a Python-based tool that automates the process of fetching your work schedule from your employer's webpage and syncing it with your Google Calendar. The project uses Selenium to log into the employer's portal, retrieves the schedule data, and then creates events on Google Calendar, ensuring your work schedule is always up-to-date.
+---
 
-## Features
+## 📌 Features
 
-- Automated Login: Securely logs into your employer's webpage to fetch the latest work schedule.
-- Google Calendar Sync: Automatically creates and updates events in your Google Calendar based on the fetched schedule.
-- Weekly Update: The script fetches and updates your schedule every week, ensuring your calendar reflects the most current information.
+* **Automated Login to Krowd** using Selenium
+* **Schedule Extraction** via Krowd’s private API
+* **Google Calendar Integration** (create, update, delete events)
+* **Support for CLI, .env, or Interactive Input** for credentials
+* **Headless Mode** support for background execution
 
-## Prerequisites
-- Python 3.11
-- Google Calendar API credentials: You'll need a credentials.json file for OAuth 2.0 authentication.
-- Chrome WebDriver: Ensure that Chrome and the corresponding ChromeDriver are installed.
+---
 
-## Installation
+## 🔧 How It Works
 
-1. Clone the repository:
+### 1. **Krowd Login (Selenium)**
 
-```bash
-git clone https://github.com/yourusername/workschedulesync.git
-cd workschedulesync
+* Selenium automates a login to the Krowd portal using a headless Chrome browser.
+* On successful login, cookies are extracted.
+* These cookies are required to access the internal shift API.
+
+### 2. **Schedule Fetching**
+
+* The application constructs an authenticated HTTP request to `myshift.darden.com` using session cookies.
+* It pulls shift data starting from the current week's Monday.
+
+### 3. **Google Calendar API**
+
+* OAuth2 flow authorizes access to the user's calendar.
+* Events in the Google Calendar for the current week (with matching summary) are:
+
+  * **Deleted** to prevent duplication
+  * **Created** anew from the Krowd shift data
+
+---
+
+## 📁 Folder and Architecture Overview
+
+```plaintext
+krowd_gcal_sync/
+├── main.py                  # Main script with all logic
+├── .env                     # Optional file for storing Krowd credentials
+├── credentials.json         # OAuth client credentials from Google Cloud Console
+├── token.json               # Stores access/refresh tokens post-authentication
+└── README.md                # Documentation
 ```
 
-2. Install the required Python packages:
+---
 
-```bash
-pip install -r requirements.txt
+## 🧱 Application Architecture
+
+```plaintext
++-------------------+
+| Command-Line Args |
++---------+---------+
+          |
+          v
++---------+---------+      +------------------+
+| Credential Handler|<---->| .env / Interactive|
++-------------------+      +------------------+
+          |
+          v
++-------------------+
+|   Krowd Login     | <---[Selenium WebDriver]
+| (Selenium)        |
++--------+----------+
+         |
+         v
++-------------------+
+|  Schedule Fetcher | <---[requests, Krowd API]
++--------+----------+
+         |
+         v
++------------------------+
+| Google Calendar Service|
+|  (OAuth + API client)  |
++--------+---------------+
+         |
+   +-----+--------+
+   |              |
+   v              v
+[Delete Events] [Create Events]
 ```
 
-3. Place your credentials.json file in the project root directory.
+---
 
-4. Ensure your environment variables for Krowd username and password are set:
+## ⚙️ Prerequisites
 
-```bash
-export KROWD_USERNAME="your_username"
-export KROWD_PASSWORD="your_password"
-```
+* **Python 3.7+**
+* **Google OAuth Credentials** from [Google Cloud Console](https://console.cloud.google.com/)
+* **Chrome + Chromedriver** installed and accessible in system PATH
 
-## Usage
+---
 
-1. Run the script:
+## 🧪 Installation
+
+1. **Clone this repository**
+
+   ```bash
+   git clone https://github.com/your-repo/krowd-gcal-sync.git
+   cd krowd-gcal-sync
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   If not available, manually install:
+
+   ```bash
+   pip install selenium google-auth google-auth-oauthlib google-api-python-client python-dotenv
+   ```
+
+3. **Set up `.env` file (optional but recommended)**
+
+   ```env
+   KROWD_USERNAME=your_username
+   KROWD_PASSWORD=your_password
+   ```
+
+4. **Place your `credentials.json` from Google Cloud Console** in the root directory.
+
+---
+
+## 🚀 Usage
+
+### Basic Run (with .env)
 
 ```bash
 python main.py
 ```
 
-2. The script will automatically log into the employer's webpage, fetch the work schedule, and update your Google Calendar.
-
-3. If it's your first time running the script, you will be prompted to authorize Google Calendar access. Follow the instructions provided in the terminal to complete the authorization process.
-
-## Docker Setup
-
-You can also run the application in a Docker container:
-
-1. Build the Docker image:
+### Custom Run (CLI input)
 
 ```bash
-docker build -t workschedulesync .
+python main.py --username your_user --password your_pass --no-headless
 ```
 
-2. Run the Docker container:
+### Headless Mode (default)
+
+* Chrome runs in the background, no window appears.
+* Add `--no-headless` to see the browser.
+
+---
+
+## 🧠 Key Technologies
+
+### 🧭 Selenium
+
+Used for browser automation to log into the Krowd portal. Selenium mimics human interaction to bypass JavaScript-based login pages and retrieve session cookies.
+
+### 🌐 Google Calendar API
+
+Used to:
+
+* Authenticate using OAuth2.
+* Fetch, delete, and insert events.
+
+### 🔑 Environment and Credential Management
+
+* Credentials are sourced from `.env`, command-line args, or prompted interactively.
+* `python-dotenv` loads environment variables.
+* Google tokens are stored in `token.json` to avoid repeated auth.
+
+---
+
+## ❗ Troubleshooting
+
+* **Browser not launching**: Ensure `chromedriver` is installed and in your PATH.
+* **403 / 401 errors from Google**: Re-authenticate by deleting `token.json`.
+* **Krowd iframe errors**: The Krowd portal layout may change. Update iframe or success indicators in the Selenium logic.
+
+---
+
+## 🔐 Security Notes
+
+* Do not commit your `.env`, `credentials.json`, or `token.json`.
+* Use `.gitignore` to exclude them:
+
+  ```plaintext
+  .env
+  credentials.json
+  token.json
+  ```
+
+---
+
+## 📅 Example Shift Event Created
+
+```json
+{
+  "summary": "OG",
+  "location": "24688 Hesperian Blvd, Hayward, CA 94545",
+  "description": "Lock In. Keep on grinding. What you put out is what you get back",
+  "start": {
+    "dateTime": "2024-05-23T10:00:00",
+    "timeZone": "America/Los_Angeles"
+  },
+  "end": {
+    "dateTime": "2024-05-23T18:00:00",
+    "timeZone": "America/Los_Angeles"
+  }
+}
+```
+
+---
+
+## 🧼 Cleanup
+
+To reset authentication:
 
 ```bash
-docker run -e KROWD_USERNAME="your_username" -e KROWD_PASSWORD="your_password" workschedulesync
+rm token.json
 ```
 
-## Troubleshooting
-- Authentication Issues: Ensure that you can access the OAuth URL provided during the first run.
-- WebDriver Errors: Verify that ChromeDriver is compatible with your installed version of Chrome.
+---
 
-## License
+## 📝 License
 
-- This project is licensed under the MIT License. [See here](https://opensource.org/licenses/MIT) for more details.
+MIT License. See `LICENSE` file (if applicable).
 
-## Author
+---
 
-Renato Perez
+Let me know if you'd like this split into multiple modules or refactored into a package!
