@@ -32,6 +32,8 @@ except ImportError:
 KROWD_LOGIN_URL = "https://krowdweb.darden.com/krowd/prd/siteminder/login_aa.asp?TYPE=33554433&REALMOID=06-918f5c77-d475-4ec7-9360-482fef7e698b&GUID=&SMAUTHREASON=0&METHOD=GET&SMAGENTNAME=-SM-LOG13DUEImGuYrdflrOtZQg%2fn6D1bmWqj8asUhwZ%2fq0IFEFIKmOZdUnhd5D8fCuC&TARGET=-SM-https%3a%2f%2fkrowdweb%2edarden%2ecom%2faffiliates%2fkrowdext%2fkrowdextaccess%2easp"
 KROWD_SCHEDULE_API_URL_TEMPLATE = "https://myshift.darden.com/api/v1/corporations/TOG/restaurants/{rest_id}/team-members/{emp_id}/shifts"
 
+SCHEDULE_SAVE_DIRECTORY = './data/schedules'
+
 # Google Calendar
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 GOOGLE_TOKEN_FILE = "token.json"
@@ -83,8 +85,8 @@ def krowd_login(username: str, password: str, headless: bool = True) -> Optional
         A dictionary of cookies if login is successful, None otherwise.
     """
     options = Options()
-    # if headless:
-    #     options.add_argument('--headless=new')
+    if headless:
+        options.add_argument('--headless=new')
     options.add_argument('--disable-gpu')  # Recommended for headless
     # Sometimes helps with headless rendering
     options.add_argument('--window-size=1920,1080')
@@ -203,18 +205,6 @@ def get_krowd_schedule(cookies: Dict[str, str], shift_start_date: str) -> Option
         schedule_data = response.json()
         logger.info(
             f"Successfully fetched schedule: {len(schedule_data)} shifts found.")
-        
-        # Format today's date as YYYY-MM-DD
-        date_str = datetime.today().strftime('%Y-%m-%d')
-
-        # Define directory and file path
-        directory = './data/schedules'
-        os.makedirs(directory, exist_ok=True)
-        file_path = os.path.join(directory, f'{date_str}.json')
-
-        # Write JSON data to file
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(schedule_data, f, indent=4)
             
         return schedule_data
     except requests.exceptions.HTTPError as e:
@@ -227,8 +217,21 @@ def get_krowd_schedule(cookies: Dict[str, str], shift_start_date: str) -> Option
             f"Error decoding JSON response from Krowd schedule API: {e}")
     return None
 
-# --- Google Calendar Interaction ---
 
+def save_schedule_to_file(schedule_data: List[Dict[str, Any]], date_str: str) -> None:
+    """Saves the schedule data to a JSON file named with the given date."""
+    directory = SCHEDULE_SAVE_DIRECTORY
+    os.makedirs(directory, exist_ok=True)
+    file_path = os.path.join(directory, f'{date_str}.json')
+
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(schedule_data, f, indent=4)
+        logger.info(f"Schedule saved to {file_path}")
+    except IOError as e:
+        logger.error(f"Failed to save schedule to {file_path}: {e}")
+
+# --- Google Calendar Interaction ---
 
 def get_google_calendar_service() -> Optional[Resource]:
     """
@@ -271,6 +274,7 @@ def get_google_calendar_service() -> Optional[Resource]:
             except Exception as e:
                 logger.error(f"Google OAuth flow failed: {e}", exc_info=True)
                 return None
+        
         # Save the credentials for the next run
         try:
             with open(GOOGLE_TOKEN_FILE, "w") as token_file:
@@ -510,19 +514,12 @@ def get_credentials(args: argparse.Namespace) -> Optional[Tuple[str, str]]:
 
 
 # --- Main Execution ---
-import os
-import json
-import logging
-from datetime import datetime
-
-logger = logging.getLogger(__name__)
-TARGET_G_CALENDAR = "OG"
 
 def main() -> None:
     """Main script execution flow."""
     args = parse_arguments()
     today_date_str = datetime.today().strftime('%Y-%m-%d')
-    schedule_path = f'./data/schedules/{today_date_str}.json'
+    schedule_path = os.path.join(SCHEDULE_SAVE_DIRECTORY, f'{today_date_str}.json')
 
     # Step 1: Load schedule from file or fetch if not available
     if os.path.exists(schedule_path):
@@ -550,12 +547,8 @@ def main() -> None:
         if krowd_schedule_data is None:
             logger.critical("Failed to fetch Krowd schedule. Exiting.")
             return
-
-        # Save fetched schedule to file
-        os.makedirs(os.path.dirname(schedule_path), exist_ok=True)
-        with open(schedule_path, 'w', encoding='utf-8') as f:
-            json.dump(krowd_schedule_data, f, indent=4)
-        logger.info(f"Fetched schedule saved to {schedule_path}")
+        
+        save_schedule_to_file(krowd_schedule_data, today_date_str)
 
     # Step 2: Initialize Google Calendar
     gcal_service = get_google_calendar_service()
@@ -582,7 +575,6 @@ def main() -> None:
         logger.info("No new Krowd shifts to add to Google Calendar.")
 
     logger.info("Krowd to Google Calendar sync process completed.")
-
 
 
 if __name__ == "__main__":
