@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# scraper.py
 """
 scraper.py
 Cloud Run Job: log into Krowd using Selenium, fetch schedule JSON, upload to GCS.
