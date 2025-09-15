@@ -39,10 +39,9 @@ jobs:
           docker push us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }}
 
       # Step 5: Deploy to Cloud Run
-      - name: Deploy to Cloud Run
+      # Step 5: Update & run the job
+      - name: Update Cloud Run Job
         run: |
-          gcloud run deploy scraper \
-            --image us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }} \
-            --region us-central1 \
-            --platform managed \
-            --allow-unauthenticated
+          gcloud run jobs update scraper \
+          --image us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }} \
+          --region us-central1
