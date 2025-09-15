@@ -227,3 +227,22 @@ MIT License. See `LICENSE` file (if applicable).
 ---
 
 Let me know if you'd like this split into multiple modules or refactored into a package!
+
+
+
+
+
+
+project/
+  lib/
+    __init__.py
+    gcs.py
+    secrets.py
+    <!-- logging_utils.py -->
+    google_calendar.py
+    krowd_scraper.py
+  scraper.py
+  sync.py
+  requirements.txt
+  Dockerfile.scraper
+  Dockerfile.sync
