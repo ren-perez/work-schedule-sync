@@ -1,0 +1,39 @@
+name: Deploy Scraper to Cloud Run
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "scraper/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: work-schedule-sync-472118
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Authenticate Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and push Docker image
+        run: |
+          cd scraper
+          docker build -t us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }} .
+          docker push us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy scraper \
+            --image us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }} \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated
