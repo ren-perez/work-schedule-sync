@@ -233,16 +233,17 @@ Let me know if you'd like this split into multiple modules or refactored into a 
 
 
 
-project/
-  lib/
+work-schedule-sync/
+  lib/                  # shared helpers (good abstraction)
     __init__.py
-    gcs.py
-    secrets.py
-    <!-- logging_utils.py -->
-    google_calendar.py
-    krowd_scraper.py
-  scraper.py
-  sync.py
+    gcs.py              # storage utils
+    secrets.py          # secret manager utils
+    logging_utils.py    # (good idea to keep separate, uncomment it)
+    google_calendar.py  # gcal client
+    krowd_scraper.py    # scraper logic
+  scraper.py            # entrypoint for scraper job
+  sync.py               # entrypoint for sync job
   requirements.txt
-  Dockerfile.scraper
-  Dockerfile.sync
+  Dockerfile.scraper    # container for scraper job
+  Dockerfile.sync       # container for sync job
+

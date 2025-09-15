@@ -1,0 +1,17 @@
+# Sync image - smaller; no Chromium
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . /app
+
+RUN useradd -m appuser || true
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python", "sync.py"]
