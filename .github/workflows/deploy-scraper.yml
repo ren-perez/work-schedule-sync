@@ -15,22 +15,30 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # Step 1: Authenticate with GCP
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # Step 2: Install gcloud CLI
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: work-schedule-sync-472118
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
 
+      # Step 3: Configure Docker to use gcloud creds
       - name: Authenticate Docker
         run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
+      # Step 4: Build & push Docker image
       - name: Build and push Docker image
         run: |
           cd scraper
           docker build -t us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }} .
           docker push us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }}
 
+      # Step 5: Deploy to Cloud Run
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy scraper \
