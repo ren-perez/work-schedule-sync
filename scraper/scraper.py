@@ -34,6 +34,22 @@ def parse_args():
     return p.parse_args()
 
 
+def get_credentials(secret_value: str) -> Dict[str, str]:
+    """
+    Get credentials from either a secret ID or direct JSON content.
+    Handles both local development (secret ID) and Cloud Run (direct content).
+    """
+    try:
+        # Try to parse as JSON first (Cloud Run case)
+        creds = json.loads(secret_value)
+        logger.info("Using credentials from environment variable content")
+        return creds
+    except json.JSONDecodeError:
+        # If it's not JSON, treat it as a secret ID (local development case)
+        logger.info("Using credentials from Secret Manager")
+        return load_secret_json(secret_value)
+
+
 def main():
     args = parse_args()
 
@@ -42,7 +58,6 @@ def main():
         return
 
     # Use passed-in date or default to today
-    # date_str = args.date or datetime.utcnow().strftime("%Y-%m-%d")
     date_str = args.date or datetime.now(UTC).strftime("%Y-%m-%d")
     
     # Parse it to ensure valid date and reuse for path formatting
@@ -56,15 +71,15 @@ def main():
     date_path = date_obj.strftime("%Y/%m/%d")
 
     # Generate current timestamp for file name
-    # timestamp_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     timestamp_str = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
-    secret_id = args.secret
-    if not secret_id:
-        logger.critical("Krowd secret id not provided. Set --secret or KROWD_SECRET env var.")
+    secret_value = args.secret
+    if not secret_value:
+        logger.critical("Krowd secret not provided. Set --secret or KROWD_SECRET env var.")
         return
 
-    creds = load_secret_json(secret_id)
+    # Get credentials (handles both secret ID and direct JSON content)
+    creds = get_credentials(secret_value)
     username = creds.get("username")
     password = creds.get("password")
     if not username or not password:
