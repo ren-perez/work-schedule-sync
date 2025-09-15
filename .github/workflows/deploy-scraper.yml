@@ -42,6 +42,6 @@ jobs:
       # Step 5: Update & run the job
       - name: Update Cloud Run Job
         run: |
-          gcloud run jobs update scraper \
+          gcloud run jobs update scraper-job \
           --image us-central1-docker.pkg.dev/work-schedule-sync-472118/work-schedule-sync-repo/scraper:${{ github.sha }} \
           --region us-central1
