@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 from datetime import datetime
 from typing import Optional
 
@@ -33,11 +34,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 DEFAULT_CALENDAR_SUMMARY = os.getenv("CALENDAR_SUMMARY", "OG")
 
-
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--gcs_path", help="Explicit GCS path to schedule JSON (takes precedence).")
-    p.add_argument("--bucket", help="GCS bucket to look into if using --date")
+    p.add_argument("--bucket", help="GCS bucket to look into if using --date", default=os.getenv("BUCKET_NAME"))
     p.add_argument("--date", help="YYYY-MM-DD (default today). Used with --bucket")
     p.add_argument("--google_token_secret", help="Secret id containing token.json", default=os.getenv("GOOGLE_TOKEN_SECRET"))
     p.add_argument("--calendar_summary", help="Calendar summary to sync into", default=DEFAULT_CALENDAR_SUMMARY)
@@ -73,47 +73,43 @@ def main():
 
     if not args.google_token_secret:
         logger.critical("google_token_secret is required (Secret Manager secret id)")
-        return
+        sys.exit(1)
 
     bucket = None
     blob = None
 
     if args.gcs_path:
-        # Explicit path wins
         if not args.gcs_path.startswith("gs://"):
             logger.critical("gcs_path must start with gs://")
-            return
+            sys.exit(1)
         parts = args.gcs_path[5:].split("/", 1)
         bucket = parts[0]
         blob = parts[1] if len(parts) > 1 else ""
     else:
-        # Resolve based on bucket + date
         if not args.bucket:
             logger.critical("Must provide either --gcs_path or --bucket.")
-            return
+            sys.exit(1)
         date_str = args.date or datetime.now().strftime("%Y-%m-%d")
         blob = resolve_latest_blob(args.bucket, date_str)
         if not blob:
-            return
+            sys.exit(1)
         bucket = args.bucket
 
-    # Download schedule JSON
     schedule = download_json(bucket_name=bucket, blob_name=blob)
     if schedule is None:
         logger.critical("Failed to download schedule JSON.")
-        return
+        sys.exit(1)
 
-    # Build Google Calendar service
     token_info = load_secret_json(args.google_token_secret)
     service = build_service_from_token_info(token_info=token_info)
     if not service:
         logger.critical("Failed to initialize Google Calendar service.")
-        return
+        sys.exit(1)
 
     calendar_id = find_calendar_by_summary(service, args.calendar_summary)
     if not calendar_id:
         logger.critical(f"Calendar with summary '{args.calendar_summary}' not found.")
-        return
+        sys.exit(1)
 
     # Delete old events
     logger.info("Fetching existing events to delete...")
