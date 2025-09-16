@@ -247,3 +247,27 @@ work-schedule-sync/
   Dockerfile.scraper    # container for scraper job
   Dockerfile.sync       # container for sync job
 
+
+
+work-schedule-sync/
+  scraper/
+    Dockerfile
+    requirements.txt
+    scraper.py
+    lib/
+      __init__.py
+      gcs.py
+      secrets.py
+      krowd_scraper.py
+      logging_utils.py
+  sync/
+    Dockerfile
+    requirements.txt
+    sync.py
+    lib/
+      __init__.py
+      gcs.py
+      secrets.py
+      google_calendar.py
+      logging_utils.py
+  .github/workflows/deploy-scraper.yml

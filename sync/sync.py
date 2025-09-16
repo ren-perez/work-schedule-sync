@@ -3,21 +3,30 @@
 sync.py
 Cloud Run Job: read schedule JSON from GCS and sync to Google Calendar.
 Inputs:
-  --gcs_path (required) e.g. gs://bucket/single/2025-09-14.json
-  --google_token_secret (Secret Manager secret id that contains token.json)
-  --google_creds_secret (optional) secret with client credentials if needed
-  --calendar_summary (calendar summary to lookup; default OG)
+  Either:
+    --gcs_path gs://bucket/single/YYYY/MM/DD/schedule-<ts>.json
+  Or:
+    --bucket BUCKET_NAME --date YYYY-MM-DD
+  (sync will pick the latest schedule file under that date prefix)
 """
 
 import argparse
 import json
 import logging
 import os
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Optional
+
+from google.cloud import storage
 
 from lib.gcs import download_json
-from lib.secrets import load_secret_string, load_secret_json
-from lib.google_calendar import build_service_from_token_info, find_calendar_by_summary, delete_events, create_events
+from lib.secrets import load_secret_json
+from lib.google_calendar import (
+    build_service_from_token_info,
+    find_calendar_by_summary,
+    delete_events,
+    create_events,
+)
 
 logger = logging.getLogger("sync")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -27,32 +36,74 @@ DEFAULT_CALENDAR_SUMMARY = os.getenv("CALENDAR_SUMMARY", "OG")
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--gcs_path", required=True, help="GCS path to schedule JSON. e.g. gs://bucket/single/2025-09-14.json")
+    p.add_argument("--gcs_path", help="Explicit GCS path to schedule JSON (takes precedence).")
+    p.add_argument("--bucket", help="GCS bucket to look into if using --date")
+    p.add_argument("--date", help="YYYY-MM-DD (default today). Used with --bucket")
     p.add_argument("--google_token_secret", help="Secret id containing token.json", default=os.getenv("GOOGLE_TOKEN_SECRET"))
     p.add_argument("--calendar_summary", help="Calendar summary to sync into", default=DEFAULT_CALENDAR_SUMMARY)
     return p.parse_args()
 
 
+def resolve_latest_blob(bucket: str, date_str: str) -> Optional[str]:
+    """Find the latest schedule blob for a given bucket + date."""
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        logger.critical("Invalid date format. Use YYYY-MM-DD.")
+        return None
+
+    prefix = f"single/{date_obj.strftime('%Y/%m/%d')}/"
+    logger.info(f"Looking for schedule files under gs://{bucket}/{prefix}")
+
+    client = storage.Client()
+    blobs = list(client.list_blobs(bucket, prefix=prefix))
+
+    if not blobs:
+        logger.error("No schedule files found for this date.")
+        return None
+
+    # Sort by updated time (or by name if you prefer filename timestamp)
+    latest_blob = max(blobs, key=lambda b: b.updated)
+    logger.info(f"Using latest blob: {latest_blob.name}")
+    return latest_blob.name
+
+
 def main():
     args = parse_args()
+
     if not args.google_token_secret:
         logger.critical("google_token_secret is required (Secret Manager secret id)")
         return
 
-    # parse gcs path
-    if not args.gcs_path.startswith("gs://"):
-        logger.critical("gcs_path must start with gs://")
-        return
-    parts = args.gcs_path[5:].split("/", 1)
-    bucket = parts[0]
-    blob = parts[1] if len(parts) > 1 else ""
+    bucket = None
+    blob = None
 
+    if args.gcs_path:
+        # Explicit path wins
+        if not args.gcs_path.startswith("gs://"):
+            logger.critical("gcs_path must start with gs://")
+            return
+        parts = args.gcs_path[5:].split("/", 1)
+        bucket = parts[0]
+        blob = parts[1] if len(parts) > 1 else ""
+    else:
+        # Resolve based on bucket + date
+        if not args.bucket:
+            logger.critical("Must provide either --gcs_path or --bucket.")
+            return
+        date_str = args.date or datetime.now().strftime("%Y-%m-%d")
+        blob = resolve_latest_blob(args.bucket, date_str)
+        if not blob:
+            return
+        bucket = args.bucket
+
+    # Download schedule JSON
     schedule = download_json(bucket_name=bucket, blob_name=blob)
     if schedule is None:
         logger.critical("Failed to download schedule JSON.")
         return
 
-    # build Google Calendar service
+    # Build Google Calendar service
     token_info = load_secret_json(args.google_token_secret)
     service = build_service_from_token_info(token_info=token_info)
     if not service:
@@ -64,13 +115,14 @@ def main():
         logger.critical(f"Calendar with summary '{args.calendar_summary}' not found.")
         return
 
-    # Delete any existing OG events in week range - naive approach: delete matching summary from now onwards
-    # choose a start date: today
+    # Delete old events
     logger.info("Fetching existing events to delete...")
-    events_to_delete = service.events().list(calendarId=calendar_id, q=args.calendar_summary, singleEvents=True).execute().get("items", [])
+    events_to_delete = service.events().list(
+        calendarId=calendar_id, q=args.calendar_summary, singleEvents=True
+    ).execute().get("items", [])
     delete_events(service, calendar_id, events_to_delete)
 
-    # Create events
+    # Create new events
     create_events(service, calendar_id, schedule)
 
     logger.info("Sync complete.")
