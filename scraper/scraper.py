@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 
 from lib.krowd_scraper import krowd_login, get_krowd_schedule
 from lib.gcs import upload_json
-from lib.secrets import load_secret_json
+from lib.secrets import get_secret
 
 logger = logging.getLogger("scraper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -32,22 +32,6 @@ def parse_args():
     p.add_argument("--secret", help="Secret Manager secret id with Krowd creds", default=os.getenv("KROWD_SECRET"))
     p.add_argument("--headless", action="store_true", default=True, help="Run Chrome headless")
     return p.parse_args()
-
-
-def get_credentials(secret_value: str) -> Dict[str, str]:
-    """
-    Get credentials from either a secret ID or direct JSON content.
-    Handles both local development (secret ID) and Cloud Run (direct content).
-    """
-    try:
-        # Try to parse as JSON first (Cloud Run case)
-        creds = json.loads(secret_value)
-        logger.info("Using credentials from environment variable content")
-        return creds
-    except json.JSONDecodeError:
-        # If it's not JSON, treat it as a secret ID (local development case)
-        logger.info("Using credentials from Secret Manager")
-        return load_secret_json(secret_value)
 
 
 def main():
@@ -79,7 +63,7 @@ def main():
         return
 
     # Get credentials (handles both secret ID and direct JSON content)
-    creds = get_credentials(secret_value)
+    creds = get_secret(secret_value)
     username = creds.get("username")
     password = creds.get("password")
     if not username or not password:

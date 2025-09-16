@@ -39,3 +39,18 @@ def load_secret_json(secret_id: str, version: str = "latest") -> Dict[str, Any]:
     except Exception:
         logger.exception("Secret payload is not valid JSON.")
         raise
+
+def get_secret(secret_value: str) -> Dict[str, str]:
+    """
+    Get secret credentials from either a secret ID or direct JSON content.
+    Handles both local development (secret ID) and Cloud Run (direct content).
+    """
+    try:
+        # Try to parse as JSON first (Cloud Run case)
+        creds = json.loads(secret_value)
+        logger.info("Using credentials from environment variable content")
+        return creds
+    except json.JSONDecodeError:
+        # If it's not JSON, treat it as a secret ID (local development case)
+        logger.info("Using credentials from Secret Manager")
+        return load_secret_json(secret_value)

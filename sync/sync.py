@@ -21,7 +21,7 @@ from typing import Optional
 from google.cloud import storage
 
 from lib.gcs import download_json
-from lib.secrets import load_secret_json
+from lib.secrets import get_secret
 from lib.google_calendar import (
     build_service_from_token_info,
     find_calendar_by_summary,
@@ -100,7 +100,8 @@ def main():
         logger.critical("Failed to download schedule JSON.")
         sys.exit(1)
 
-    token_info = load_secret_json(args.google_token_secret)
+    # token_info = load_secret_json(args.google_token_secret)
+    token_info = get_secret(args.google_token_secret)
     service = build_service_from_token_info(token_info=token_info)
     if not service:
         logger.critical("Failed to initialize Google Calendar service.")
