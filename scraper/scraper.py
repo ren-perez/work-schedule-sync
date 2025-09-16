@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 from datetime import datetime, UTC
 from typing import Any, Dict, List
 
@@ -39,7 +40,7 @@ def main():
 
     if not args.bucket:
         logger.critical("GCS bucket not provided. Set --bucket or BUCKET_NAME env var.")
-        return
+        sys.exit(1)
 
     # Use passed-in date or default to today
     date_str = args.date or datetime.now(UTC).strftime("%Y-%m-%d")
@@ -49,7 +50,7 @@ def main():
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
         logger.critical("Invalid date format. Use YYYY-MM-DD.")
-        return
+        sys.exit(1)
 
     # Format path from date_str
     date_path = date_obj.strftime("%Y/%m/%d")
@@ -60,7 +61,7 @@ def main():
     secret_value = args.secret
     if not secret_value:
         logger.critical("Krowd secret not provided. Set --secret or KROWD_SECRET env var.")
-        return
+        sys.exit(1)
 
     # Get credentials (handles both secret ID and direct JSON content)
     creds = get_secret(secret_value)
@@ -68,18 +69,18 @@ def main():
     password = creds.get("password")
     if not username or not password:
         logger.critical("Krowd secret must contain username and password fields.")
-        return
+        sys.exit(1)
 
     # Login & fetch schedule
     cookies = krowd_login(username=username, password=password, headless=args.headless)
     if not cookies:
         logger.critical("Krowd login failed.")
-        return
+        sys.exit(1)
 
     schedule = get_krowd_schedule(cookies=cookies)
     if schedule is None:
         logger.critical("Failed to fetch schedule.")
-        return
+        sys.exit(1)
 
     # Construct blob name
     blob_name = f"single/{date_path}/schedule-{timestamp_str}.json"
