@@ -1,0 +1,50 @@
+# workflows/scraper-sync-workflow.yaml
+main:
+  steps:
+    - init:
+        assign:
+          - project: "work-schedule-sync-472118"
+          - region: "us-central1"
+          - bucket: "work-schedule-sync-prod"
+          - scraperJob: "scraper-job"
+          - syncJob: "sync-job"
+
+    # compute date + timestamp and build the exact GCS path we want the scraper to write
+    - make_paths:
+        assign:
+          - run_date: ${time.format(sys.now(), "%Y-%m-%d")}
+          - date_path: ${time.format(sys.now(), "%Y/%m/%d")}
+          - timestamp: ${time.format(sys.now(), "%Y%m%dT%H%M%SZ")}
+          - gcs_path: ${"gs://" + bucket + "/single/" + date_path + "/schedule-" + timestamp + ".json"}
+
+    - runScraper:
+        call: googleapis.run.v1.namespaces.jobs.run
+        args:
+          name: ${"namespaces/" + project + "/jobs/" + scraperJob}
+          location: ${region}
+          body:
+            overrides:
+              containerOverrides:
+                args:
+                  - ${"--gcs_path=" + gcs_path}
+        result: scraperResp
+
+    - runSync:
+        call: googleapis.run.v1.namespaces.jobs.run
+        args:
+          name: ${"namespaces/" + project + "/jobs/" + syncJob}
+          location: ${region}
+          body:
+            overrides:
+              containerOverrides:
+                args:
+                  - ${"--gcs_path=" + gcs_path}
+        result: syncResp
+
+    - returnResult:
+        return:
+          status: "ok"
+          run_date: ${run_date}
+          gcs_path: ${gcs_path}
+          scraper: ${scraperResp}
+          sync: ${syncResp}
