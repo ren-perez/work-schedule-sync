@@ -12,9 +12,10 @@ main:
     # compute date + timestamp and build the exact GCS path we want the scraper to write
     - make_paths:
         assign:
-          - run_date: ${time.format(sys.now(), "%Y-%m-%d")}
-          - date_path: ${time.format(sys.now(), "%Y/%m/%d")}
-          - timestamp: ${time.format(sys.now(), "%Y%m%dT%H%M%SZ")}
+          - full_timestamp: ${time.format(sys.now())}
+          - run_date: ${text.substring(full_timestamp, 0, 10)}
+          - date_path: ${text.replace_all(text.substring(full_timestamp, 0, 10), "-", "/")}
+          - timestamp: ${text.replace_all(text.replace_all(text.substring(full_timestamp, 0, 19), "-", ""), ":", "") + "Z"}
           - gcs_path: ${"gs://" + bucket + "/single/" + date_path + "/schedule-" + timestamp + ".json"}
 
     - runScraper:
